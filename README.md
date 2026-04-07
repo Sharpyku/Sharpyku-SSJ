@@ -178,4 +178,6 @@ The `.csproj` references `T3MenuSharedAPI.dll` and `SharpTimerAPI.dll` — adjus
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE)<img width="530" height="128" alt="Screenshot 2026-04-07 143720" src="https://github.com/user-attachments/assets/8200dbe9-e1f8-4306-871e-6919579d8c61" />
+
+<img width="349" height="185" alt="Screenshot 2026-04-07 143655" src="https://github.com/user-attachments/assets/0d5f218b-d823-45db-8c05-9972a50fb9b1" />
