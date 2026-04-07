@@ -20,6 +20,8 @@ A **Strafe Sync Jump (SSJ)** plugin for CS2 servers running [CounterStrikeSharp]
 
 ## Chat Output
 
+![SSJ Chat Output](images/ssj_chat.png)
+
 ```
 [SSJ] Jump 1 | Pre: 340 | Speed: 412 | Gain: +21.2% | Sync: 87% | Strafes: 4
 [SSJ] Jump 2 | Speed: 478 | Gain: +16.0% | Sync: 82% | Strafes: 5
@@ -136,6 +138,8 @@ The plugin automatically creates the database table on first connect. Player set
 | `!ssj`  | Open SSJ settings menu       |
 
 ### Settings Menu (via T3Menu)
+
+![SSJ Settings Menu](images/ssj_menu.png)
 
 - **Enabled** — Toggle SSJ on/off
 - **Repeat** — Show stats every run or only the first time
