@@ -18,38 +18,51 @@ public class SSJPlugin : BasePlugin
 {
     public override string ModuleAuthor => "EliteGames";
     public override string ModuleName => "SSJ-Plugin";
-    public override string ModuleVersion => "2.0.0";
+    public override string ModuleVersion => "2.1.0";
 
-    // ─── Tuning constants (from FL-StrafeMaster) ───
-    private const int    MinAirTicksToReport    = 2;
-    private const int    PrintThrottleTicks     = 8;
-    private const float  AccelDeadzone          = 0.20f;   // Minimum velocity change to count as strafe accel
-    private const float  TurnDeadzoneRad        = 0.0035f; // ~0.2° — minimum rotation to count as a turn
-    private const int    GroundSettleTicksAir    = 3;       // Ticks in air before confirmed airborne
-    private const float  JumpImpulseDelta       = 150f;    // Z velocity jump for autobhop re-jump detection
-    private const float  FallingVzThreshold     = -20f;    // Must be falling before re-jump detection fires
-    private const int    MaxGroundTicksForBhop   = 4;      // Max ground ticks to still count as bhop chain
-    private const int    ChainResetGroundTicks   = 24;     // Ground ticks before chain fully resets
+    // ─── Sync algorithm constants (from FL-StrafeMaster) ───
+    private const float  AccelDeadzone          = 0.20f;
+    private const float  TurnDeadzoneRad        = 0.0035f;
+    private const float  JumpImpulseDelta       = 150f;
+    private const float  FallingVzThreshold     = -20f;
 
     private readonly ConcurrentDictionary<int, PlayerData> _players = new();
     private readonly ConcurrentDictionary<ulong, PlayerSettings> _settings = new();
     private IT3MenuManager? _menuManager;
     private ISharpTimerEventSender? _stEventSender;
     private string? _dbConnectionString;
+    private PluginConfig _config = new();
 
-    // ─── DB Config ───
-    private class DbConfig
+    // ─── Plugin Config (auto-generated JSON) ───
+    public class PluginConfig
     {
+        public string ChatTag { get; set; } = "[SSJ]";
+        public string ChatTagColor { get; set; } = "DarkBlue";
+        public bool StartzoneOnly { get; set; } = true;
+        public int DefaultMaxJumps { get; set; } = 6;
+        public bool DefaultEnabled { get; set; } = true;
+        public bool DefaultRepeat { get; set; } = true;
+        public int MinAirTicksToReport { get; set; } = 2;
+        public int PrintThrottleTicks { get; set; } = 8;
+        public int GroundSettleTicksAir { get; set; } = 3;
+        public int ChainResetGroundTicks { get; set; } = 24;
+        public DatabaseConfig Database { get; set; } = new();
+    }
+
+    public class DatabaseConfig
+    {
+        public bool Enabled { get; set; } = false;
         public string Host { get; set; } = "localhost";
         public int Port { get; set; } = 3306;
         public string Database { get; set; } = "BhopServer";
         public string User { get; set; } = "root";
         public string Password { get; set; } = "";
+        public string TableName { get; set; } = "ssj_settings";
     }
 
     public override void Load(bool hotReload)
     {
-        LoadDbConfig();
+        LoadConfig();
         RegisterListener<Listeners.OnTick>(OnTick);
         RegisterListener<Listeners.OnClientDisconnect>(slot => _players.TryRemove(slot, out _));
         RegisterEventHandler<EventPlayerSpawn>(OnPlayerSpawn);
@@ -113,34 +126,71 @@ public class SSJPlugin : BasePlugin
         return HookResult.Continue;
     }
 
-    // ─── DB Config Loading ───
-    private void LoadDbConfig()
+    // ─── Config Loading ───
+    private void LoadConfig()
     {
         string cfgDir = Path.Combine(ModuleDirectory, "..", "..", "..", "configs", "plugins", "SSJ-Plugin");
-        string cfgPath = Path.Combine(cfgDir, "database.json");
+        string cfgPath = Path.Combine(cfgDir, "config.json");
+
+        // Remove old database.json if it exists
+        string oldDbPath = Path.Combine(cfgDir, "database.json");
+        if (File.Exists(oldDbPath) && !File.Exists(cfgPath))
+        {
+            try { File.Delete(oldDbPath); } catch { }
+        }
 
         if (!File.Exists(cfgPath))
         {
             Directory.CreateDirectory(cfgDir);
-            var defaultCfg = new DbConfig();
-            File.WriteAllText(cfgPath, JsonSerializer.Serialize(defaultCfg, new JsonSerializerOptions { WriteIndented = true }));
-            Logger.LogWarning("[SSJ] Created default database.json config at {Path}. Please configure it.", cfgPath);
-            return;
+            _config = new PluginConfig();
+            File.WriteAllText(cfgPath, JsonSerializer.Serialize(_config, new JsonSerializerOptions { WriteIndented = true }));
+            Logger.LogInformation("[SSJ] Created default config.json at {Path}", cfgPath);
+        }
+        else
+        {
+            try
+            {
+                _config = JsonSerializer.Deserialize<PluginConfig>(File.ReadAllText(cfgPath)) ?? new PluginConfig();
+                Logger.LogInformation("[SSJ] Config loaded.");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogError(ex, "[SSJ] Failed to load config.json, using defaults.");
+                _config = new PluginConfig();
+            }
         }
 
-        try
+        // Setup database if enabled
+        if (_config.Database.Enabled)
         {
-            var cfg = JsonSerializer.Deserialize<DbConfig>(File.ReadAllText(cfgPath));
-            if (cfg == null) return;
-
-            _dbConnectionString = $"Server={cfg.Host};Port={cfg.Port};Database={cfg.Database};User={cfg.User};Password={cfg.Password};";
-            Logger.LogInformation("[SSJ] Database config loaded.");
+            var db = _config.Database;
+            _dbConnectionString = $"Server={db.Host};Port={db.Port};Database={db.Database};User={db.User};Password={db.Password};";
             _ = Task.Run(EnsureTableAsync);
         }
-        catch (Exception ex)
+    }
+
+    private string GetTagColor()
+    {
+        return _config.ChatTagColor.ToLower() switch
         {
-            Logger.LogError(ex, "[SSJ] Failed to load database config.");
-        }
+            "darkblue" => ChatColors.DarkBlue.ToString()!,
+            "blue" => ChatColors.Blue.ToString()!,
+            "lightblue" => ChatColors.LightBlue.ToString()!,
+            "red" => ChatColors.Red.ToString()!,
+            "darkred" => ChatColors.DarkRed.ToString()!,
+            "green" => ChatColors.Green.ToString()!,
+            "lime" => ChatColors.Lime.ToString()!,
+            "gold" => ChatColors.Gold.ToString()!,
+            "yellow" => ChatColors.Yellow.ToString()!,
+            "purple" => ChatColors.Purple.ToString()!,
+            "magenta" => ChatColors.Magenta.ToString()!,
+            "olive" => ChatColors.Olive.ToString()!,
+            "orange" => ChatColors.Orange.ToString()!,
+            "grey" => ChatColors.Grey.ToString()!,
+            "lightred" => ChatColors.LightRed.ToString()!,
+            "lightpurple" => ChatColors.LightPurple.ToString()!,
+            _ => ChatColors.DarkBlue.ToString()!
+        };
     }
 
     // ─── DB Table Creation ───
@@ -152,8 +202,8 @@ public class SSJPlugin : BasePlugin
             await using var conn = new MySqlConnection(_dbConnectionString);
             await conn.OpenAsync();
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ssj_settings (
+            cmd.CommandText = $@"
+                CREATE TABLE IF NOT EXISTS {_config.Database.TableName} (
                     SteamID BIGINT UNSIGNED PRIMARY KEY,
                     Enabled TINYINT NOT NULL DEFAULT 1,
                     RepeatMode TINYINT NOT NULL DEFAULT 1,
@@ -177,12 +227,17 @@ public class SSJPlugin : BasePlugin
             await using var conn = new MySqlConnection(_dbConnectionString);
             await conn.OpenAsync();
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = "SELECT Enabled, RepeatMode, MaxJumps FROM ssj_settings WHERE SteamID = @sid";
+            cmd.CommandText = $"SELECT Enabled, RepeatMode, MaxJumps FROM {_config.Database.TableName} WHERE SteamID = @sid";
             cmd.Parameters.AddWithValue("@sid", steamId);
             await using var reader = await cmd.ExecuteReaderAsync();
             if (await reader.ReadAsync())
             {
-                var settings = _settings.GetOrAdd(steamId, _ => new PlayerSettings());
+                var settings = _settings.GetOrAdd(steamId, _ => new PlayerSettings
+                {
+                    Enabled = _config.DefaultEnabled,
+                    Repeat = _config.DefaultRepeat,
+                    Mode = _config.DefaultMaxJumps
+                });
                 settings.Enabled = reader.GetInt32(0) == 1;
                 settings.Repeat = reader.GetInt32(1) == 1;
                 settings.Mode = reader.GetInt32(2);
@@ -203,10 +258,10 @@ public class SSJPlugin : BasePlugin
             await using var conn = new MySqlConnection(_dbConnectionString);
             await conn.OpenAsync();
             await using var cmd = conn.CreateCommand();
-            cmd.CommandText = @"
-                INSERT INTO ssj_settings (SteamID, Enabled, RepeatMode, MaxJumps)
+            cmd.CommandText = $@"
+                INSERT INTO {_config.Database.TableName} (SteamID, Enabled, RepeatMode, MaxJumps)
                 VALUES (@sid, @en, @rep, @mj)
-                ON DUPLICATE KEY UPDATE Enabled=@en, RepeatMode=@rep, MaxJumps=@mj;";
+                ON DUPLICATE KEY UPDATE Enabled=@en, RepeatMode=@rep, MaxJumps=@mj";
             cmd.Parameters.AddWithValue("@sid", steamId);
             cmd.Parameters.AddWithValue("@en", settings.Enabled ? 1 : 0);
             cmd.Parameters.AddWithValue("@rep", settings.Repeat ? 1 : 0);
@@ -222,9 +277,9 @@ public class SSJPlugin : BasePlugin
     // ─── Player Settings (persisted by SteamID) ───
     public class PlayerSettings
     {
-        public bool Enabled { get; set; } = true;
-        public bool Repeat  { get; set; } = true;
-        public int  Mode    { get; set; } = 6;  // Max jumps to display
+        public bool Enabled { get; set; }
+        public bool Repeat  { get; set; }
+        public int  Mode    { get; set; }
         public bool AlreadyShown { get; set; }
     }
 
@@ -288,13 +343,18 @@ public class SSJPlugin : BasePlugin
             ulong steamId = player.SteamID;
             if (steamId == 0) continue;
 
-            var cfg = _settings.GetOrAdd(steamId, _ => new PlayerSettings());
+            var cfg = _settings.GetOrAdd(steamId, _ => new PlayerSettings
+            {
+                Enabled = _config.DefaultEnabled,
+                Repeat = _config.DefaultRepeat,
+                Mode = _config.DefaultMaxJumps
+            });
             if (!cfg.Enabled) continue;
 
             var pd = _players.GetOrAdd(player.Slot, _ => new PlayerData());
 
             // Only track SSJ after timer started (player left startzone)
-            if (_stEventSender != null && !pd.TimerStarted) continue;
+            if (_config.StartzoneOnly && _stEventSender != null && !pd.TimerStarted) continue;
             var st = pd.Air;
 
             var v = pawn.AbsVelocity;
@@ -320,7 +380,7 @@ public class SSJPlugin : BasePlugin
                 }
 
                 // Chain reset if on ground too long — SSJ stops until next startzone
-                if (st.StableGroundCount > ChainResetGroundTicks && pd.JumpNumber > 0)
+                if (st.StableGroundCount > _config.ChainResetGroundTicks && pd.JumpNumber > 0)
                 {
                     pd.ResetChain();
                     pd.TimerStarted = false;
@@ -331,7 +391,7 @@ public class SSJPlugin : BasePlugin
                 st.StableAirCount++;
                 st.StableGroundCount = 0;
 
-                if (!st.InAir && st.StableAirCount >= GroundSettleTicksAir)
+                if (!st.InAir && st.StableAirCount >= _config.GroundSettleTicksAir)
                 {
                     // TAKEOFF confirmed
                     st.InAir = true;
@@ -379,7 +439,7 @@ public class SSJPlugin : BasePlugin
                     st.StartHorizSpeed = horizSpeed;
                     st.StrafeCount = 0;
                     st.LastTurnSign = 0;
-                    st.StableAirCount = GroundSettleTicksAir;
+                    st.StableAirCount = _config.GroundSettleTicksAir;
                     st.StableGroundCount = 0;
                     st.LastVx = vx; st.LastVy = vy; st.LastVz = vz;
                     st.LastHeadingDeg = SafeHeadingDeg(vx, vy);
@@ -447,12 +507,12 @@ public class SSJPlugin : BasePlugin
     // ─── Handle Landing: print SSJ stats ───
     private void HandleLanding(CCSPlayerController player, PlayerData pd, PlayerSettings cfg, AirState st, float endHorizSpeed)
     {
-        if (st.TotalAirTicks < MinAirTicksToReport) return;
+        if (st.TotalAirTicks < _config.MinAirTicksToReport) return;
         if (pd.JumpNumber <= 0 || pd.JumpNumber > cfg.Mode) return;
         if (!cfg.Repeat && cfg.AlreadyShown) return;
 
         long tick = Server.TickCount;
-        if (tick - st.LastPrintTick < PrintThrottleTicks) return;
+        if (tick - st.LastPrintTick < _config.PrintThrottleTicks) return;
 
         int sync = st.TotalAirTicks > 0
             ? (int)MathF.Round(100f * st.GoodTicks / st.TotalAirTicks)
@@ -480,10 +540,12 @@ public class SSJPlugin : BasePlugin
 
         string gainSign = gainPct >= 0 ? "+" : "";
 
+        string tag = $"{GetTagColor()}{_config.ChatTag}{ChatColors.Default}";
+
         if (pd.JumpNumber == 1)
         {
             player.PrintToChat(
-                $" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} Jump {ChatColors.LightBlue}{pd.JumpNumber}{ChatColors.Default}" +
+                $" {tag} Jump {ChatColors.LightBlue}{pd.JumpNumber}{ChatColors.Default}" +
                 $" | Pre: {ChatColors.Gold}{pd.PreSpeed:F0}{ChatColors.Default}" +
                 $" | Speed: {ChatColors.LightBlue}{endHorizSpeed:F0}{ChatColors.Default}" +
                 $" | Gain: {gainColor}{gainSign}{gainPct}%{ChatColors.Default}" +
@@ -493,7 +555,7 @@ public class SSJPlugin : BasePlugin
         else
         {
             player.PrintToChat(
-                $" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} Jump {ChatColors.LightBlue}{pd.JumpNumber}{ChatColors.Default}" +
+                $" {tag} Jump {ChatColors.LightBlue}{pd.JumpNumber}{ChatColors.Default}" +
                 $" | Speed: {ChatColors.LightBlue}{endHorizSpeed:F0}{ChatColors.Default}" +
                 $" | Gain: {gainColor}{gainSign}{gainPct}%{ChatColors.Default}" +
                 $" | Sync: {syncColor}{sync}%{ChatColors.Default}" +
@@ -521,12 +583,17 @@ public class SSJPlugin : BasePlugin
 
         if (_menuManager == null)
         {
-            player.PrintToChat($" {ChatColors.DarkBlue}[SSJ]{ChatColors.Red} T3Menu API not available.");
+            player.PrintToChat($" {GetTagColor()}{_config.ChatTag}{ChatColors.Red} T3Menu API not available.");
             return;
         }
 
         var steamId = player.SteamID;
-        var settings = _settings.GetOrAdd(steamId, _ => new PlayerSettings());
+        var settings = _settings.GetOrAdd(steamId, _ => new PlayerSettings
+        {
+            Enabled = _config.DefaultEnabled,
+            Repeat = _config.DefaultRepeat,
+            Mode = _config.DefaultMaxJumps
+        });
         OpenSSJMenu(player, settings);
     }
 
@@ -539,14 +606,14 @@ public class SSJPlugin : BasePlugin
         menu.AddBoolOption("Enabled", defaultValue: settings.Enabled, (p, o) =>
         {
             settings.Enabled = !settings.Enabled;
-            p.PrintToChat($" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} SSJ {(settings.Enabled ? $"{ChatColors.Green}Enabled" : $"{ChatColors.Red}Disabled")}");
+            p.PrintToChat($" {GetTagColor()}{_config.ChatTag}{ChatColors.Default} SSJ {(settings.Enabled ? $"{ChatColors.Green}Enabled" : $"{ChatColors.Red}Disabled")}");
             _ = Task.Run(async () => await SavePlayerSettingsAsync(p.SteamID, settings));
         });
 
         menu.AddBoolOption("Repeat", defaultValue: settings.Repeat, (p, o) =>
         {
             settings.Repeat = !settings.Repeat;
-            p.PrintToChat($" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} Repeat {(settings.Repeat ? $"{ChatColors.Green}On" : $"{ChatColors.Red}Off")}");
+            p.PrintToChat($" {GetTagColor()}{_config.ChatTag}{ChatColors.Default} Repeat {(settings.Repeat ? $"{ChatColors.Green}On" : $"{ChatColors.Red}Off")}");
             _ = Task.Run(async () => await SavePlayerSettingsAsync(p.SteamID, settings));
         });
 
@@ -556,7 +623,7 @@ public class SSJPlugin : BasePlugin
             if (o is IT3Option sliderOption && sliderOption.DefaultValue != null)
             {
                 settings.Mode = (int)sliderOption.DefaultValue;
-                p.PrintToChat($" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} Showing {ChatColors.LightBlue}{settings.Mode}{ChatColors.Default} jumps");
+                p.PrintToChat($" {GetTagColor()}{_config.ChatTag}{ChatColors.Default} Showing {ChatColors.LightBlue}{settings.Mode}{ChatColors.Default} jumps");
                 _ = Task.Run(async () => await SavePlayerSettingsAsync(p.SteamID, settings));
             }
         });
@@ -566,7 +633,7 @@ public class SSJPlugin : BasePlugin
             if (_players.TryGetValue(p.Slot, out var data))
                 data.ResetChain();
             settings.AlreadyShown = false;
-            p.PrintToChat($" {ChatColors.DarkBlue}[SSJ]{ChatColors.Default} Stats reset.");
+            p.PrintToChat($" {GetTagColor()}{_config.ChatTag}{ChatColors.Default} Stats reset.");
             menu.Close(p);
         });
 

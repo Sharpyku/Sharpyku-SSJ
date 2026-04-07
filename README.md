@@ -1,4 +1,4 @@
-# SSJ Plugin for CounterStrikeSharp
+# Sharpyku-SSJ — Strafe Sync Jump Plugin for CS2
 
 A **Strafe Sync Jump (SSJ)** plugin for CS2 servers running [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp). Displays per-jump strafe statistics in chat, helping players improve their bunny hopping technique.
 
@@ -13,9 +13,10 @@ Uses a **velocity cross/dot product** algorithm (inspired by [FL-StrafeMaster](h
 - **Per-jump stats** — Pre speed, speed, gain %, sync %, strafe count
 - **Accurate sync** — Velocity-based cross/dot product sync algorithm
 - **Autobhop support** — Detects in-air re-jumps (same-tick land+jump)
+- **Fully configurable** — Auto-generated `config.json` with all settings (tag, colors, database, defaults, tuning)
 - **Startzone integration** — Only tracks jumps after leaving the start zone (requires [SharpTimer](https://github.com/DEAFPS/SharpTimer))
 - **Per-player settings** — Toggle SSJ on/off, repeat mode, max jumps to display (1-10)
-- **MySQL/MariaDB persistence** — Player settings are saved to database and persist across server restarts
+- **MySQL/MariaDB persistence** — Player settings saved to database, persist across server restarts
 - **T3Menu integration** — Interactive settings menu via `!ssj` command (requires [T3Menu-API](https://github.com/T3Marius/T3Menu-API))
 
 ## Chat Output
@@ -49,8 +50,8 @@ Colors: Sync ≥80% = green, ≥60% = yellow, ≥40% = gold, <40% = red
    csgo/addons/counterstrikesharp/plugins/SSJ-Plugin/
    ```
 3. Make sure `SSJ-Plugin.dll` and `MySqlConnector.dll` are both in the folder
-4. Start/restart your server
-5. Configure the database (see below)
+4. Start/restart your server — a `config.json` will be auto-generated
+5. Edit the config to your liking (see below)
 
 ### File Structure
 ```
@@ -62,38 +63,72 @@ csgo/addons/counterstrikesharp/
 └── configs/
     └── plugins/
         └── SSJ-Plugin/
-            └── database.json       ← auto-created on first load
+            └── config.json         ← auto-created on first load
 ```
 
-## Database Configuration
+## Configuration
 
-On first load, the plugin creates a default config at:
+On first server start, the plugin auto-generates a config file at:
 ```
-csgo/addons/counterstrikesharp/configs/plugins/SSJ-Plugin/database.json
+csgo/addons/counterstrikesharp/configs/plugins/SSJ-Plugin/config.json
 ```
 
-Edit it with your MySQL/MariaDB credentials:
+**All plugin settings are configured from this single file.** Here's the full default config with explanations:
 
 ```json
 {
-  "Host": "localhost",
-  "Port": 3306,
-  "Database": "your_database",
-  "User": "your_user",
-  "Password": "your_password"
+  "ChatTag": "[SSJ]",
+  "ChatTagColor": "DarkBlue",
+  "StartzoneOnly": true,
+  "DefaultMaxJumps": 6,
+  "DefaultEnabled": true,
+  "DefaultRepeat": true,
+  "MinAirTicksToReport": 2,
+  "PrintThrottleTicks": 8,
+  "GroundSettleTicksAir": 3,
+  "ChainResetGroundTicks": 24,
+  "Database": {
+    "Enabled": false,
+    "Host": "localhost",
+    "Port": 3306,
+    "Database": "BhopServer",
+    "User": "root",
+    "Password": "",
+    "TableName": "ssj_settings"
+  }
 }
 ```
 
-The plugin automatically creates the `ssj_settings` table:
+### Config Options
 
-| Column     | Type              | Description                  |
-|------------|-------------------|------------------------------|
-| SteamID    | BIGINT UNSIGNED   | Player's Steam ID (Primary)  |
-| Enabled    | TINYINT           | SSJ enabled (1) or off (0)   |
-| RepeatMode | TINYINT           | Show every run (1) or once   |
-| MaxJumps   | INT               | Max jump number to display   |
+| Option | Default | Description |
+|--------|---------|-------------|
+| `ChatTag` | `[SSJ]` | The tag shown in chat before each message. Change to anything you want (e.g. `[BHOP]`, `[EG]`) |
+| `ChatTagColor` | `DarkBlue` | Color of the tag. Options: `DarkBlue`, `Blue`, `LightBlue`, `Red`, `DarkRed`, `Green`, `Lime`, `Gold`, `Yellow`, `Purple`, `Magenta`, `Olive`, `Orange`, `Grey`, `LightRed`, `LightPurple` |
+| `StartzoneOnly` | `true` | Only track SSJ after player leaves the start zone. Set to `false` to track all jumps anywhere |
+| `DefaultMaxJumps` | `6` | Default number of jumps to display per run (players can override via `!ssj` menu) |
+| `DefaultEnabled` | `true` | Whether SSJ is enabled by default for new players |
+| `DefaultRepeat` | `true` | Whether stats repeat every run by default |
+| `MinAirTicksToReport` | `2` | Minimum air ticks before a jump is reported (filters micro-jumps) |
+| `PrintThrottleTicks` | `8` | Minimum ticks between chat messages (prevents spam) |
+| `GroundSettleTicksAir` | `3` | Ticks in air before takeoff is confirmed |
+| `ChainResetGroundTicks` | `24` | Ticks on ground before bhop chain resets |
 
-> **No database?** The plugin works fine without it — settings just won't persist between sessions.
+### Database Settings
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `Database.Enabled` | `false` | Set to `true` to enable MySQL/MariaDB persistence |
+| `Database.Host` | `localhost` | Database server address |
+| `Database.Port` | `3306` | Database server port |
+| `Database.Database` | `BhopServer` | Database name |
+| `Database.User` | `root` | Database username |
+| `Database.Password` | `""` | Database password |
+| `Database.TableName` | `ssj_settings` | Name of the settings table |
+
+The plugin automatically creates the database table on first connect. Player settings (Enabled, Repeat, MaxJumps) are saved per SteamID.
+
+> **No database?** Leave `Database.Enabled` as `false` — the plugin works fine without it, settings just won't persist between sessions.
 
 ## Commands
 
