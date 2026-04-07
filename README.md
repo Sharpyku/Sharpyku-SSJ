@@ -2,7 +2,6 @@
 
 A **Strafe Sync Jump (SSJ)** plugin for CS2 servers running [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp). Displays per-jump strafe statistics in chat, helping players improve their bunny hopping technique.
 
-Uses a **velocity cross/dot product** algorithm (inspired by [FL-StrafeMaster](https://github.com/JumperBhop/FL-StrafeMaster)) for accurate strafe sync calculation.
 
 ![CS2](https://img.shields.io/badge/CS2-Plugin-blue)
 ![.NET 8](https://img.shields.io/badge/.NET-8.0-purple)
@@ -173,7 +172,6 @@ The `.csproj` references `T3MenuSharedAPI.dll` and `SharpTimerAPI.dll` — adjus
 
 ## Credits
 
-- Sync algorithm inspired by [FL-StrafeMaster](https://github.com/JumperBhop/FL-StrafeMaster) by JumperBhop
 - Built on [CounterStrikeSharp](https://github.com/roflmuffin/CounterStrikeSharp) by roflmuffin
 - Menu system by [T3Menu-API](https://github.com/T3Marius/T3Menu-API) by T3Marius
 - Timer integration via [SharpTimer](https://github.com/DEAFPS/SharpTimer) API
