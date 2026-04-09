@@ -18,7 +18,7 @@ public class SSJPlugin : BasePlugin
 {
     public override string ModuleAuthor => "EliteGames";
     public override string ModuleName => "SSJ-Plugin";
-    public override string ModuleVersion => "2.1.0";
+    public override string ModuleVersion => "2.1.1";
 
     // ─── Sync algorithm constants (from FL-StrafeMaster) ───
     private const float  AccelDeadzone          = 0.20f;
@@ -129,7 +129,7 @@ public class SSJPlugin : BasePlugin
     // ─── Config Loading ───
     private void LoadConfig()
     {
-        string cfgDir = Path.Combine(ModuleDirectory, "..", "..", "..", "configs", "plugins", "SSJ-Plugin");
+        string cfgDir = Path.Combine(ModuleDirectory, "..", "..", "configs", "plugins", "SSJ-Plugin");
         string cfgPath = Path.Combine(cfgDir, "config.json");
 
         // Remove old database.json if it exists
